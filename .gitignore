@@ -1,0 +1,5 @@
+.env
+improve_logs/
+__pycache__/
+*.pyc
+ad_banners/*.png
