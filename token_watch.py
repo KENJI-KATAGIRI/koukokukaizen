@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-META広告トークンの期限を監視し、7日前・3日前・当日にLINE通知を送る。
-cron: 毎日朝8時JST(23時UTC)に実行
+META広告トークンの期限をAPIで自動取得し、7日前・3日前・当日にLINE通知。
+トークンを更新するだけで次の期限に自動追従する。
 """
 import os, json, datetime, urllib.request, urllib.parse
 from pathlib import Path
@@ -13,6 +13,8 @@ for line in env_path.read_text().splitlines():
     if line and not line.startswith('#') and '=' in line:
         k, v = line.split('=', 1)
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+TOKEN = os.environ.get('META_ACCESS_TOKEN', '')
 
 def send_line(msg: str):
     token_path = Path('/home/ubuntu/.secrets/line_seo_token.txt')
@@ -34,28 +36,51 @@ def send_line(msg: str):
     except Exception as e:
         print(f'LINE通知エラー: {e}')
 
-# トークン期限チェック（.envのコメントから日付を取得）
-env_text = env_path.read_text()
-expire_date = None
-for line in env_text.splitlines():
-    if '有効期限' in line and '2026' in line:
-        # "# 有効期限: 2026-07-30" から日付を抽出
-        import re
-        m = re.search(r'(\d{4}-\d{2}-\d{2})', line)
-        if m:
-            expire_date = datetime.date.fromisoformat(m.group(1))
-            break
+# META APIでトークンの実際の期限を取得
+def get_token_expire_date(token: str):
+    url = (f'https://graph.facebook.com/debug_token'
+           f'?input_token={token}&access_token={token}')
+    try:
+        with urllib.request.urlopen(url, timeout=15) as r:
+            data = json.loads(r.read())
+        expires_at = data.get('data', {}).get('expires_at', 0)
+        if expires_at:
+            return datetime.date.fromtimestamp(expires_at)
+    except Exception as e:
+        print(f'API期限取得エラー: {e}')
+    return None
 
+if not TOKEN:
+    print('トークン未設定')
+    exit(1)
+
+expire_date = get_token_expire_date(TOKEN)
 if not expire_date:
-    print('期限日が.envに見つかりません')
-    exit(0)
+    print('期限取得失敗（トークンが無効の可能性）')
+    send_line('🔴 META広告トークンの期限が確認できません。\nトークンが無効になっている可能性があります。')
+    exit(1)
 
 today = datetime.date.today()
 days_left = (expire_date - today).days
+print(f'トークン期限: {expire_date}（残り{days_left}日）')
 
-print(f'トークン期限: {expire_date} (残り{days_left}日)')
-
-if days_left == 7:
+if days_left <= 0:
+    send_line(
+        f'🔴 META広告トークンが期限切れです！\n'
+        f'広告の自動改善が止まっています。\n'
+        f'すぐにトークンを更新してClaudeに送ってください。'
+    )
+elif days_left == 3:
+    send_line(
+        f'🚨 META広告トークンが3日後に期限切れです！\n'
+        f'期限: {expire_date}\n\n'
+        f'【更新手順】\n'
+        f'① https://developers.facebook.com/tools/debug/accesstoken/ を開く\n'
+        f'② 現在のトークンを貼り付けて「デバッグ」\n'
+        f'③「アクセストークンを延長」をクリック\n'
+        f'④ 新トークンをClaudeに送って更新してもらう'
+    )
+elif days_left == 7:
     send_line(
         f'⚠️ META広告トークンが7日後に期限切れになります\n'
         f'期限: {expire_date}\n\n'
@@ -65,17 +90,5 @@ if days_left == 7:
         f'③「アクセストークンを延長」をクリック\n'
         f'④ 新トークンをClaudeに送って更新してもらう'
     )
-elif days_left == 3:
-    send_line(
-        f'🚨 META広告トークンが3日後に期限切れです！\n'
-        f'期限: {expire_date}\n'
-        f'早めに更新してください！'
-    )
-elif days_left <= 0:
-    send_line(
-        f'🔴 META広告トークンが期限切れです！\n'
-        f'広告の自動改善が止まっています。\n'
-        f'すぐにトークンを更新してください。'
-    )
 else:
-    print(f'期限まで{days_left}日。通知不要。')
+    print(f'通知不要（残り{days_left}日）')
