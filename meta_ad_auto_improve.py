@@ -301,6 +301,17 @@ def main():
     total_leads  = sum(a['leads'] for a in ads)
     avg_cpr = total_spend / total_leads if total_leads > 0 else 0
 
+    # 勝ち広告候補: 消化済み・十分なリード・許容CPR内 → CPR昇順で最大2本を勝ち広告とする
+    # ※ avg_cpr * 0.9 比較は廃止（支配的な1広告が平均を引き上げて自分自身を超えられないバグのため）
+    win_candidates = sorted(
+        [a for a in ads
+         if a['spend'] >= MIN_SPEND_TO_JUDGE
+         and a['leads'] >= MIN_LEADS_FOR_WIN
+         and a['cpr'] < PAUSE_IF_CPR_OVER],
+        key=lambda a: a['cpr']
+    )
+    winner_ids = {a['id'] for a in win_candidates[:2]}
+
     to_pause = []
     winners  = []
 
@@ -313,7 +324,7 @@ def main():
         elif a['cpr'] > PAUSE_IF_CPR_OVER:
             verdict = f'🔴 停止候補（CPR高）'
             to_pause.append(a)
-        elif a['leads'] >= MIN_LEADS_FOR_WIN and (avg_cpr == 0 or a['cpr'] <= avg_cpr * 0.9):
+        elif a['id'] in winner_ids:
             verdict = '🟢 勝ち広告'
             winners.append(a)
         else:
