@@ -81,7 +81,7 @@ BANNERS = [
 ]
 
 # ── カスタムオーディエンス（BNI名刺191件リスト） ──────────
-CUSTOM_AUDIENCE_ID = 'REPLACE_WITH_AUDIENCE_ID'  # ← Meta管理画面で取得したIDに書き換える
+CUSTOM_AUDIENCE_ID = '120245406889740485'  # BNI_custom_audience_email.csv (191件)
 
 TARGETING = {
     'custom_audiences': [{'id': CUSTOM_AUDIENCE_ID}],
